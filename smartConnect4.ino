@@ -16,10 +16,11 @@ char keys[ROWS][COLS] = {
   {'*','0','#','D'}
 };
 
-byte rowPins[ROWS] = {22, 24, 26, 28}; //connect to the row pinouts of the keypad
-byte colPins[COLS] = {30, 32, 34, 36}; //connect to the column pinouts of the keypad
+// Digital pins to connect the Keypad
+byte colPins[ROWS] = {22, 24, 26, 28}; 
+byte rowPins[COLS] = {30, 32, 34, 36}; 
 
-Keypad keypad = Keypad( makeKeymap(keys), colPins, rowPins, ROWS, COLS );
+Keypad keypad = Keypad(makeKeymap(keys), colPins, rowPins, ROWS, COLS);
 
 void lcdPrintTwoLines(String s1, String s2="") 
 {
@@ -81,53 +82,51 @@ void loop()
 }
 
 
-
+/**
+ * @brief Contains all the logic of user's turn 
+ */
 void userTurn() 
 {
+  Serial.println("[User turn]: Start");
   lcdPrintTwoLines("Your turn!", "Enter column:");
 
-  char column = 0;
+  int column = 0;
   while (true) 
   {
-    char column = keypad.waitForKey();
+    column = keypad.waitForKey() - '0'; 
     if (validColumn(column)) break;
-
-  lcdPrintTwoLines("Not valid!", "Enter column:");
+    
+    lcdPrintTwoLines("Not valid!", "Enter column:");
+    Serial.println("[User turn]: Not correct column given");
   }
 
   lcdPrintTwoLines("Loading...");
   moveColumn(column);
+  Serial.println("[User turn]: End");
 }
 
-void moveColumn(char c) 
+/**
+ * @brief Moves the mechanism to push the token in a valid column
+ * @param c - int column's number selected 
+ */
+void moveColumn(int column) 
 {
-  int column = int(c); // Esto no va
-  Serial.println(column);
+  char buffer[50];
+  sprintf(buffer, "[User turn]: Column entered: %d\n", column);
+  Serial.print(buffer);
+  Serial.println("[User turn]: moving mechanism...");
   delay(1000);
+  // TODO: run stepmotor to the column & remove above delay
 }
 
-boolean validColumn(char column) 
+/**
+ * @brief It validates if it is possible to push a token in a given column
+ * @param column - char column number selected
+ */
+boolean validColumn(int column) 
 {
-  if (column < 49 || column > 55) return false;
+  if (column < 1 || column > 7) return false;
 
   // TODO: validate if column is not full
   return true;
 }
-
-//int readKeyPressed()
-//{
-// int column = 0;
-// while (column == 0) 
-// {
-//  lcdPrint("Enter column: ");
-//  char columnChar = keypad.getKey();   
-//  String columnString = "" + columnChar;
-//  column = columnString.toInt();
-//  if (!isDigit(columnChar) || (column > 0 && column < 8))
-//  {
-//    lcd.print(columnChar);
-//    return column;
-//  }
-//  lcdPrint("Incorrecto");
-// }
-// }
