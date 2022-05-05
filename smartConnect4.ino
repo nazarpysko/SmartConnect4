@@ -7,6 +7,12 @@
 #define COLS 4
 #define ROWS 4
 
+#define USER_TOKEN  'x'
+#define AI_TOKEN    'o'
+
+// Constant to return if a token is not possible to deploy in a column
+#define NOT_VALID 8
+
 LiquidCrystal_I2C lcd(I2C_address, 16, 2);
 
 char keys[ROWS][COLS] = {
@@ -21,6 +27,20 @@ byte colPins[ROWS] = {22, 24, 26, 28};
 byte rowPins[COLS] = {30, 32, 34, 36}; 
 
 Keypad keypad = Keypad(makeKeymap(keys), colPins, rowPins, ROWS, COLS);
+
+// The board is labeled from left to right & top to bottom. 
+char board[6][7] = {
+//#Cols:  0    1    2    3    4    5    6   #Rows
+        {' ', ' ', ' ', ' ', ' ', ' ', ' '}, // 0
+        {' ', ' ', ' ', ' ', ' ', ' ', ' '}, // 1
+        {' ', ' ', ' ', ' ', ' ', ' ', ' '}, // 2
+        {' ', ' ', ' ', ' ', ' ', ' ', ' '}, // 3
+        {' ', ' ', ' ', ' ', ' ', ' ', ' '}, // 4
+        {' ', ' ', ' ', ' ', ' ', ' ', ' '}, // 5
+};
+
+// Each column's count of tokens
+byte depth[7] = {0, 0, 0, 0, 0, 0, 0};
 
 void lcdPrintTwoLines(String s1, String s2="") 
 {
@@ -70,7 +90,6 @@ void setup()
   lcd.backlight();
   lcd.cursor();
   lcd.blink();
-  lcdPrintTwoLines("Vaya cara de pringao jaja xD");
 }
 
 void loop()
@@ -90,43 +109,76 @@ void userTurn()
   Serial.println("[User turn]: Start");
   lcdPrintTwoLines("Your turn!", "Enter column:");
 
-  int column = 0;
+  byte column = 0;
+  byte row = NOT_VALID;
   while (true) 
   {
     column = keypad.waitForKey() - '0'; 
-    if (validColumn(column)) break;
+    
+    // OffByOne. From user's perspective columns are numerated from 1 to 7. 
+    column--; 
+    
+    row = validateColumn(column);
+    if (row != NOT_VALID) break;
     
     lcdPrintTwoLines("Not valid!", "Enter column:");
     Serial.println("[User turn]: Not correct column given");
   }
 
   lcdPrintTwoLines("Loading...");
-  moveColumn(column);
+  updateBoard(row, column, USER_TOKEN);
   Serial.println("[User turn]: End");
 }
 
 /**
- * @brief Moves the mechanism to push the token in a valid column
+ * @brief Print the board on Serial
+ */
+
+void printBoard()
+{
+  Serial.println();
+  for (byte row = 0; row < 6; row++)
+  {
+    for (byte col = 0; col < 7; col++) 
+    {
+      char buff[2];
+      sprintf(buff, "|%c", board[row][col]);
+      Serial.print(buff);
+    }  
+    Serial.println("|");
+  }
+  Serial.println();
+}
+
+/**
+ * @brief Updates phisical board by moving the mechanism and virtual board state
  * @param c - int column's number selected 
  */
-void moveColumn(int column) 
+void updateBoard(byte row, byte column, byte turnToken) 
 {
   char buffer[50];
-  sprintf(buffer, "[User turn]: Column entered: %d\n", column);
+  sprintf(buffer, "[%s turn]: Column selected: %\n", turnToken == USER_TOKEN ? "User" : "AI", column + 1);
   Serial.print(buffer);
-  Serial.println("[User turn]: moving mechanism...");
-  delay(1000);
-  // TODO: run stepmotor to the column & remove above delay
+  
+  board[row][column] = turnToken;
+  depth[column] += 1;
+  
+  printBoard();
+
+  sprintf(buffer, "[%s turn]: Moving mechanism...\n", turnToken == USER_TOKEN ? "User" : "AI", column + 1);
+  Serial.print(buffer);
+  
+  // TODO: run mechanism to the deploy the token in selected column 
 }
 
 /**
  * @brief It validates if it is possible to push a token in a given column
- * @param column - char column number selected
+ * @param column - byte column number selected
+ * @return row value to update the board or NOT_VALID if is not possible
  */
-boolean validColumn(int column) 
-{
-  if (column < 1 || column > 7) return false;
+byte validateColumn(byte column) 
+{ 
+  if (column < 0 || column > 6 || depth[column] == 6) return NOT_VALID;
 
-  // TODO: validate if column is not full
-  return true;
+  return 5 - depth[column];
 }
