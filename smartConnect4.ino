@@ -12,7 +12,7 @@
 #define USER_TOKEN  'x'
 #define AI_TOKEN    'o'
 
-// Constant to return if a token is not possible to deploy in a column
+// Constant to return  if a token is not possible to deploy in a column
 #define NOT_VALID 8
 
 LiquidCrystal_I2C lcd(I2C_address, 16, 2);
@@ -42,10 +42,11 @@ char board[ROWS][COLS] = {
 };
 
 // Each column's count of tokens
-byte depth[COLS] = {0, 0, 0, 0, 0, 0, 0};
+byte depth[COLS] = {0, 0, 0, 0, 0, 0, 0}; 
 
 void lcdPrint(String s1, String s2="") {
   lcd.clear();
+  lcd.setCursor(0, 0);
   lcd.print(s1);
   lcd.setCursor(0, 1);
   lcd.print(s2);
@@ -58,21 +59,62 @@ void setup() {
   lcd.backlight();
   lcd.cursor();
   lcd.blink();
+
+  randomSeed(69);
 }
 
 void loop() {
   userTurn();
-//  checkWinState();  
-//  AITurn();
-//  checkWinState();
+  checkEndOfGame(USER_TOKEN);
+  AITurn();
+  checkEndOfGame(AI_TOKEN);
+}
+
+void checkEndOfGame(char token) {
+  // TODO: Refactor logs. One function with string parameter and token. 
+  char buff[50]; 
+  snprintf(buff, sizeof(buff),"[%s turn]: Checking for win\n", token == USER_TOKEN ? "User" : "AI");
+  Serial.print(buff);
+  
+  if(isWin(token)) {
+    memset(buff, 0, sizeof(buff));
+    snprintf(buff, sizeof(buff),"[%s turn]: Won the game. GAME OVER\n", token == USER_TOKEN ? "User" : "AI");
+    Serial.println(buff);
+    // TODO: custom message depending on who wins
+    lcdPrint("GAME OVER", "GAME OVER");
+    for(;;);  // Dummy loop to end game
+  }
+
+  memset(buff, 0, sizeof(buff));
+  snprintf(buff, sizeof(buff),"[%s turn]: Not found connected 4\n", token == USER_TOKEN ? "User" : "AI");
+  Serial.print(buff);
+}
+
+void AITurn(){
+  byte column, row;
+  Serial.println("\n\n[AI turn]: Start");
+  // TODO: Code repeated. Refactor get column & row each turn both for ai and user.
+  while (true) {
+    column = random(0, 7); 
+    
+    row = validateColumn(column);
+    if (row != NOT_VALID) break;
+  }
+  
+  char buff[50]; 
+  snprintf(buff, sizeof(buff),"Row = %d & Column = %d\n", row, column);
+  Serial.print(buff);
+  
+  updateBoard(row, column, AI_TOKEN);
+  Serial.println("[AI turn]: End");
 }
 
 
 /**
- * @brief Contains all the logic of user's turn 
+ * @brief Contains all the logic of user's turn  
  */
 void userTurn() {
-  Serial.println("[User turn]: Start");
+  Serial.println("\n\n[User turn]: Start");
   lcdPrint("Your turn!", "Enter column:");
 
   byte column = 0;
@@ -103,8 +145,8 @@ void printBoard() {
   Serial.println();
   for (byte row = 0; row < 6; row++) {
     for (byte col = 0; col < 7; col++) {
-      char buff[2];
-      sprintf(buff, "|%c", board[row][col]);
+      char buff[3];
+      snprintf(buff, sizeof(buff),"|%c", board[row][col]);
       Serial.print(buff);
     }
     Serial.println("|");
@@ -114,20 +156,21 @@ void printBoard() {
 
 /**
  * @brief Updates phisical board by moving the mechanism and virtual board state
- * @param c - int column's number selected 
+ * @param c - byte column's number selected 
  */
-void updateBoard(byte row, byte column, byte turnToken) {
-  char buffer[35];
-  sprintf(buffer, "[%s turn]: Column selected: %d\n", turnToken == USER_TOKEN ? "User" : "AI", column + 1);
-  Serial.print(buffer);
+void updateBoard(byte row, byte column, char token) {
+  char buff[40];
+  snprintf(buff, sizeof(buff),"[%s turn]: Column selected: %d\n", token == USER_TOKEN ? "User" : "AI", column + 1);
+  Serial.print(buff);
   
-  board[row][column] = turnToken;
+  board[row][column] = token;
   depth[column] += 1;
   
   printBoard();
 
-  sprintf(buffer, "[%s turn]: Moving mechanism...\n", turnToken == USER_TOKEN ? "User" : "AI", column + 1);
-  Serial.print(buffer);
+  memset(buff, 0, sizeof(buff));
+  snprintf(buff, sizeof(buff),"[%s turn]: Moving mechanism...\n", token == USER_TOKEN ? "User" : "AI");
+  Serial.print(buff);
   
   // TODO: run mechanism to the deploy the token in selected column 
 }
@@ -135,9 +178,47 @@ void updateBoard(byte row, byte column, byte turnToken) {
 /**
  * @brief It validates if it is possible to push a token in a given column
  * @param column - byte column number selected
- * @return row value to update the board or NOT_VALID if is not possible
+ * @return  row value to update the board or NOT_VALID if is not possible
  */
 byte validateColumn(byte column) { 
-  if (column < 0 || column > 6 || depth[column] == 6) return NOT_VALID;
+  if (column < 0 || column > 6 || depth[column] == 6) return  NOT_VALID;
   return 5 - depth[column];
+}
+
+
+bool isWin(char token) {
+  // TODO: Refactor to avoid checking come positions. Not necessary to check void positions in vertical checkings for example
+  
+  // Check for horizontals
+  for (byte row = 0; row < ROWS; row++) {
+    for (byte col = 0; col < COLS - 3; col++) {
+      if (board[row][col] == token && board[row][col + 1] == token && board[row][col + 2] == token && board[row][col + 3] == token)
+        return true;
+    }
+  }
+
+  // Check for verticals
+  for (byte col = 0; col < COLS; col++) {
+    for (byte row = 0; row < ROWS - 3; row++) {
+      if (board[row][col] == token && board[row + 1][col] == token && board[row + 2][col] == token && board[row + 3][col] == token)
+        return true;
+    }
+  }
+
+  // Check for positive diagonals
+  for (byte row = 0; row < ROWS - 3; row++) {
+    for (byte col = 0; col < COLS - 3; col++) {
+      if (board[row][col] == token && board[row + 1][col + 1] == token && board[row + 2][col + 2] == token && board[row + 3][col + 3] == token)
+        return true;
+    }
+  }
+  // Check for negative diagonals
+  for (byte row = 0; row < ROWS - 3; row++) {
+    for (byte col = COLS - 4; col < COLS; col++) {
+      if (board[row][col] == token && board[row + 1][col - 1] == token && board[row + 2][col - 2] == token && board[row + 3][col - 3] == token)
+        return true;
+    }
+  }
+
+  return false;
 }
