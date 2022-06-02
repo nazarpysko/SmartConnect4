@@ -12,8 +12,18 @@
 #define USER_TOKEN  'x'
 #define AI_TOKEN    'o'
 
+#define EMPTY 10
 // Constant to return  if a token is not possible to deploy in a column
 #define NOT_VALID 8
+
+
+// Score constants
+// OPEN means there is still chance to make 4 in a row
+#define FOUR_IN_A_ROW_SCORE 100
+#define OPEN_THREE_IN_A_ROW_SCORE 10
+#define OPEN_TWO_IN_A_ROW_SCORE 5
+#define OPEN_ODD_THREE_IN_A_ROW_SCORE 80
+#define CENTER_SCORE 6
 
 LiquidCrystal_I2C lcd(I2C_address, 16, 2);
 
@@ -44,6 +54,17 @@ char board[ROWS][COLS] = {
 // Each column's count of tokens
 byte depth[COLS] = {0, 0, 0, 0, 0, 0, 0}; 
 
+typedef struct {
+  byte row;
+  byte col;
+} Position;
+
+typedef struct {
+  byte token;
+  byte oddToken; 
+  byte empty;
+} AccountTokens;
+
 void lcdPrint(String s1, String s2="") {
   lcd.clear();
   lcd.setCursor(0, 0);
@@ -59,8 +80,6 @@ void setup() {
   lcd.backlight();
   lcd.cursor();
   lcd.blink();
-
-  randomSeed(69);
 }
 
 void loop() {
@@ -81,7 +100,7 @@ void checkEndOfGame(char token) {
     snprintf(buff, sizeof(buff),"[%s turn]: Won the game. GAME OVER\n", token == USER_TOKEN ? "User" : "AI");
     Serial.println(buff);
     // TODO: custom message depending on who wins
-    lcdPrint("GAME OVER", "GAME OVER");
+    lcdPrint("GAME OVER", "");
     for(;;);  // Dummy loop to end game
   }
 
@@ -91,24 +110,122 @@ void checkEndOfGame(char token) {
 }
 
 void AITurn(){
-  byte column, row;
   Serial.println("\n\n[AI turn]: Start");
-  // TODO: Code repeated. Refactor get column & row each turn both for ai and user.
-  while (true) {
-    column = random(0, 7); 
-    
-    row = validateColumn(column);
-    if (row != NOT_VALID) break;
-  }
+  
+  Position pos = {.row = EMPTY, .col = EMPTY};
+  pickBestPosition(AI_TOKEN, &pos);
   
   char buff[50]; 
-  snprintf(buff, sizeof(buff),"Row = %d & Column = %d\n", row, column);
+  snprintf(buff, sizeof(buff),"Row = %d & Column = %d\n", pos.row, pos.col);
   Serial.print(buff);
   
-  updateBoard(row, column, AI_TOKEN);
+  updateBoard(pos.row, pos.col, AI_TOKEN);
   Serial.println("[AI turn]: End");
 }
 
+void countTokens(char *window, char token, AccountTokens *at) {
+  for (byte i = 0; i < 4; i++)
+    if (window[i] == token) at->token++;
+    else if (window[i] == ' ') at->empty++;
+    else at->oddToken++;
+}
+
+int evaluateWindow(char *window, char token) {
+  int score = 0;
+  AccountTokens accountTokens = {.token = 0, .oddToken = 0, .empty = 0};
+  
+  countTokens(window, token, &accountTokens);
+  
+  if (accountTokens.token == 4) score += FOUR_IN_A_ROW_SCORE;
+  else if (accountTokens.token == 3 && accountTokens.empty == 1) score += OPEN_THREE_IN_A_ROW_SCORE;
+  else if (accountTokens.token == 2 && accountTokens.empty == 2) score += OPEN_TWO_IN_A_ROW_SCORE;
+
+  if (accountTokens.oddToken == 3 && accountTokens.empty == 1) score -= OPEN_ODD_THREE_IN_A_ROW_SCORE;
+  
+  return score;
+}
+
+int scorePosition(char token) {
+  int score = 0;
+
+  // Score center positions
+  for (byte row = 0; row < ROWS-3; row++) {
+    char window[4] = {board[row][3], board[row+1][3], board[row+2][3], board[row+3][3]};
+    AccountTokens at = {0, 0, 0};
+    countTokens(window, token, &at);
+    score += at.token * CENTER_SCORE;
+  }
+  
+  // Score horizontal positions
+  for (byte row = 0; row < ROWS; row++) {
+    for (byte col = 0; col < COLS - 3; col++) {
+      // Create a group of horizontal positions of board to check
+      char window[4] = {board[row][col], board[row][col+1], board[row][col+2], board[row][col+3]};
+      score += evaluateWindow(window, token);
+    }
+  }
+
+  // Score vertical positions
+  for (byte col = 0; col < COLS; col++) {
+    for (byte row = 0; row < ROWS - 3; row++) {
+      // Create a group of vertical positions of board to check
+      char window[4] = {board[row][col], board[row+1][col], board[row+2][col], board[row+3][col]};
+      score += evaluateWindow(window, token);
+    }
+  }
+
+  // Score positive diagonal
+  for (byte row = 0; row < ROWS - 3; row++) {
+    for (byte col = 0; col < COLS - 3; col++) {
+      // Create a group of positive diagonal positions of board to check
+      char window[4] = {board[row][col], board[row+1][col+1], board[row+2][col+2], board[row+3][col+3]};
+      score += evaluateWindow(window, token);
+    }
+  }
+
+  // Score negative diagonal
+  for (byte row = 0; row < ROWS - 3; row++) {
+    for (byte col = COLS - 4; col < COLS; col++) {
+      // Create a group of negative diagonal positions of board to check
+      char window[4] = {board[row][col], board[row+1][col-1], board[row+2][col-2], board[row+3][col-3]};
+      score += evaluateWindow(window, token);
+    }
+  }
+  
+  return score;
+}
+
+void pickBestPosition(char token, Position *pos) {
+  int bestScore = -INFINITY;
+
+  for (byte col = 0; col < COLS; col++) {
+    
+    byte row = validateColumn(col); 
+    if (row == NOT_VALID) continue;
+
+    board[row][col] = token;
+    int score = scorePosition(token);
+    
+    char buff[50]; 
+    snprintf(buff, sizeof(buff),"Trying row = %d & col = %d (score = %d)\n", row, col, score);
+    Serial.print(buff);
+
+    printBoard();
+    
+    board[row][col] = ' ';
+
+
+    if(pos->col == EMPTY || score > bestScore){
+      bestScore = score;
+      pos->col = col;
+      pos->row = row;
+      
+      char buff[60]; 
+      snprintf(buff, sizeof(buff),"New best score found: %d at row = %d & col = %d\n", bestScore, row, col);
+      Serial.print(buff);
+    }
+  }
+}
 
 /**
  * @brief Contains all the logic of user's turn  
@@ -143,8 +260,17 @@ void userTurn() {
 
 void printBoard() {
   Serial.println();
-  for (byte row = 0; row < 6; row++) {
-    for (byte col = 0; col < 7; col++) {
+  
+  Serial.print(' ');
+  for (byte col = 0; col < COLS; col++) {
+    Serial.print(col);
+    Serial.print(' ');
+  }
+
+  Serial.println();
+  
+  for (byte row = 0; row < ROWS; row++) {
+    for (byte col = 0; col < COLS; col++) {
       char buff[3];
       snprintf(buff, sizeof(buff),"|%c", board[row][col]);
       Serial.print(buff);
@@ -160,7 +286,7 @@ void printBoard() {
  */
 void updateBoard(byte row, byte column, char token) {
   char buff[40];
-  snprintf(buff, sizeof(buff),"[%s turn]: Column selected: %d\n", token == USER_TOKEN ? "User" : "AI", column + 1);
+  snprintf(buff, sizeof(buff),"[%s turn]: Column selected: %d\n", token == USER_TOKEN ? "User" : "AI", column);
   Serial.print(buff);
   
   board[row][column] = token;
