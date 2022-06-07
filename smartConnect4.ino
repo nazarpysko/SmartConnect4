@@ -2,6 +2,9 @@
 #include <LiquidCrystal_I2C.h>
 #include <Keypad.h>
 
+//#define DEBUG
+#define MINIMAX
+
 #define I2C_address 0x3F 
 #define PAD_COLS 4
 #define PAD_ROWS 4
@@ -51,13 +54,15 @@ char board[ROWS][COLS] = {
         {' ', ' ', ' ', ' ', ' ', ' ', ' '}, // 5
 };
 
-// Each column's count of tokens
-byte depth[COLS] = {0, 0, 0, 0, 0, 0, 0}; 
-
 typedef struct {
   byte row;
   byte col;
 } Position;
+
+typedef struct {
+  int score; 
+  Position position;
+} MinimaxResult;
 
 typedef struct {
   byte token;
@@ -111,16 +116,29 @@ void checkEndOfGame(char token) {
 
 void AITurn(){
   Serial.println("\n\n[AI turn]: Start");
-  
+
+  #ifndef MINIMAX
   Position pos = {.row = EMPTY, .col = EMPTY};
   pickBestPosition(AI_TOKEN, &pos);
-  
+
   char buff[50]; 
   snprintf(buff, sizeof(buff),"Row = %d & Column = %d\n", pos.row, pos.col);
   Serial.print(buff);
-  
+
   updateBoard(pos.row, pos.col, AI_TOKEN);
   Serial.println("[AI turn]: End");
+  #endif
+
+  #ifdef MINIMAX
+  MinimaxResult mmr = minimax(3, true);
+  
+  char buff[50]; 
+  snprintf(buff, sizeof(buff),"Row = %d & Column = %d\n", mmr.position.row, mmr.position.col);
+  Serial.print(buff);
+  
+  updateBoard(mmr.position.row, mmr.position.col, AI_TOKEN);
+  Serial.println("[AI turn]: End");
+  #endif
 }
 
 void countTokens(char *window, char token, AccountTokens *at) {
@@ -195,6 +213,130 @@ int scorePosition(char token) {
   return score;
 }
 
+boolean isTerminalNode(void) {
+  bool boardFull = false;
+  for (int col = 0; col < COLS; col++) {
+    // If not empty spot found, board is not empty 
+    if (board[0][col] == ' ') break;  
+    
+    // If all columns checked and still here, board is full
+    if (col == 6) boardFull = true; 
+  }
+  
+  return boardFull || isWin(USER_TOKEN) || isWin(AI_TOKEN);
+}
+
+MinimaxResult minimax(byte depth, bool maximizingPlayer) {
+  #ifdef DEBUG
+  Serial.print("===== MINIMAX =====\n");
+  #endif
+  
+  MinimaxResult minimaxResult;
+
+  #ifdef DEBUG
+  char buff[50]; 
+  snprintf(buff, sizeof(buff),"----- Trying depth = %d -----\n", depth);
+  Serial.print(buff);
+  
+  printBoard();
+  #endif
+  
+  // Base case
+  if (depth == 0 || isTerminalNode()) {
+    #ifdef DEBUG  
+    Serial.print("----- BASE CASE: ");
+    #endif
+    
+    if (depth == 0) {
+      #ifdef DEBUG  
+      Serial.print("0 depth. \n");
+      #endif
+      
+      minimaxResult.score = scorePosition(AI_TOKEN);
+      minimaxResult.position = {NOT_VALID, NOT_VALID};
+
+      #ifdef DEBUG
+      char buff[50]; 
+      snprintf(buff, sizeof(buff),"SCORE = %d \n", minimaxResult.score);
+      Serial.print(buff);
+      #endif
+      
+      return minimaxResult;
+    } else {
+      if (isWin(AI_TOKEN)) {
+        #ifdef DEBUG
+        Serial.print("AI WIN :) \n");  
+        #endif
+        
+        minimaxResult.score = INFINITY;
+      } else if (isWin(USER_TOKEN)){
+        #ifdef DEBUG
+        Serial.print("USER WIN :( \n");  
+        #endif
+        
+        minimaxResult.score = -INFINITY;
+      } else {
+        #ifdef DEBUG
+        Serial.print("DRAW :/ \n");  
+        #endif
+        
+        minimaxResult.score = 0;
+      }
+      minimaxResult.position = {NOT_VALID, NOT_VALID};
+      return minimaxResult;
+    }
+  // Maximizing Player case
+  } else if (maximizingPlayer) {
+    #ifdef DEBUG
+    Serial.print("----- MAXIMIZING PLAYER ----- \n");
+    #endif
+    
+    int newMinimaxScore;
+    minimaxResult.score = -INFINITY; 
+    for (byte col = 0; col < COLS; col++) {
+      byte row = validateColumn(col); 
+      if (row == NOT_VALID) continue;
+
+      board[row][col] = AI_TOKEN;
+      newMinimaxScore = (minimax(depth - 1, false)).score;
+      board[row][col] = ' ';
+      
+      if (newMinimaxScore > minimaxResult.score) {
+        #ifdef DEBUG
+        Serial.print("NEW HIGHSCORE FOUND!!\n");
+        #endif
+        
+        minimaxResult.score = newMinimaxScore;
+        minimaxResult.position = {.row=row, .col=col};  
+      }
+    }
+    return minimaxResult;
+  // Minimizing player case
+  } else {
+    #ifdef DEBUG
+    Serial.print("----- MINIMIZING PLAYER ----- \n");
+    #endif
+    
+    int newMinimaxScore;
+    minimaxResult.score = INFINITY;
+     
+    for (byte col = 0; col < COLS; col++) {
+      byte row = validateColumn(col); 
+      if (row == NOT_VALID) continue;
+      
+      board[row][col] = USER_TOKEN;
+      newMinimaxScore = (minimax(depth - 1, true)).score;
+      board[row][col] = ' ';
+      
+      if (newMinimaxScore < minimaxResult.score) {
+        minimaxResult.score = newMinimaxScore;
+        minimaxResult.position = {.row=row, .col=col};  
+      }
+    }
+    return minimaxResult;
+  }
+}
+
 void pickBestPosition(char token, Position *pos) {
   int bestScore = -INFINITY;
 
@@ -205,12 +347,14 @@ void pickBestPosition(char token, Position *pos) {
 
     board[row][col] = token;
     int score = scorePosition(token);
-    
+
+    #ifdef DEBUG
     char buff[50]; 
     snprintf(buff, sizeof(buff),"Trying row = %d & col = %d (score = %d)\n", row, col, score);
     Serial.print(buff);
-
+    
     printBoard();
+    #endif 
     
     board[row][col] = ' ';
 
@@ -219,10 +363,12 @@ void pickBestPosition(char token, Position *pos) {
       bestScore = score;
       pos->col = col;
       pos->row = row;
-      
+
+      #ifdef DEBUG
       char buff[60]; 
       snprintf(buff, sizeof(buff),"New best score found: %d at row = %d & col = %d\n", bestScore, row, col);
       Serial.print(buff);
+      #endif
     }
   }
 }
@@ -241,7 +387,7 @@ void userTurn() {
     
     // OffByOne. From user's perspective columns are numerated from 1 to 7. 
     column--; 
-    
+
     row = validateColumn(column);
     if (row != NOT_VALID) break;
     
@@ -275,7 +421,8 @@ void printBoard() {
       snprintf(buff, sizeof(buff),"|%c", board[row][col]);
       Serial.print(buff);
     }
-    Serial.println("|");
+    Serial.print("| ");
+    Serial.println(row);
   }
   Serial.println();
 }
@@ -290,7 +437,6 @@ void updateBoard(byte row, byte column, char token) {
   Serial.print(buff);
   
   board[row][column] = token;
-  depth[column] += 1;
   
   printBoard();
 
@@ -307,14 +453,16 @@ void updateBoard(byte row, byte column, char token) {
  * @return  row value to update the board or NOT_VALID if is not possible
  */
 byte validateColumn(byte column) { 
-  if (column < 0 || column > 6 || depth[column] == 6) return  NOT_VALID;
-  return 5 - depth[column];
+  if (column < 0 || column > 6) return  NOT_VALID;
+  for (short row = 5; row >= 0; row--) {
+    if (board[row][column] == ' ') return row;
+  }
+
+  return  NOT_VALID;
 }
 
 
 bool isWin(char token) {
-  // TODO: Refactor to avoid checking come positions. Not necessary to check void positions in vertical checkings for example
-  
   // Check for horizontals
   for (byte row = 0; row < ROWS; row++) {
     for (byte col = 0; col < COLS - 3; col++) {
