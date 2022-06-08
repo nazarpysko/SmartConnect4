@@ -16,17 +16,16 @@
 #define AI_TOKEN    'o'
 
 #define EMPTY 10
-// Constant to return  if a token is not possible to deploy in a column
 #define NOT_VALID 8
 
 
 // Score constants
 // OPEN means there is still chance to make 4 in a row
 #define FOUR_IN_A_ROW_SCORE 100
-#define OPEN_THREE_IN_A_ROW_SCORE 10
-#define OPEN_TWO_IN_A_ROW_SCORE 5
+#define OPEN_THREE_IN_A_ROW_SCORE 5
+#define OPEN_TWO_IN_A_ROW_SCORE 2
 #define OPEN_ODD_THREE_IN_A_ROW_SCORE 80
-#define CENTER_SCORE 6
+#define CENTER_SCORE 3
 
 LiquidCrystal_I2C lcd(I2C_address, 16, 2);
 
@@ -85,6 +84,17 @@ void setup() {
   lcd.backlight();
   lcd.cursor();
   lcd.blink();
+
+  int duration = 500;
+  
+  tone(8, 1400, duration);
+  delay(200);
+  tone(8, 800, duration);
+  delay(200);
+  tone(8, 1800, duration);
+  delay(200);
+  tone(8, 600, duration);
+  delay(200);
 }
 
 void loop() {
@@ -104,8 +114,8 @@ void checkEndOfGame(char token) {
     memset(buff, 0, sizeof(buff));
     snprintf(buff, sizeof(buff),"[%s turn]: Won the game. GAME OVER\n", token == USER_TOKEN ? "User" : "AI");
     Serial.println(buff);
-    // TODO: custom message depending on who wins
-    lcdPrint("GAME OVER", "");
+    
+    lcdPrint("GAME OVER", token == USER_TOKEN ? "You win!!" : "You lose :(");
     for(;;);  // Dummy loop to end game
   }
 
@@ -130,10 +140,10 @@ void AITurn(){
   #endif
 
   #ifdef MINIMAX
-  MinimaxResult mmr = minimax(3, true);
+  MinimaxResult mmr = minimax(3 , -INFINITY, INFINITY, true);
   
   char buff[50]; 
-  snprintf(buff, sizeof(buff),"Row = %d & Column = %d\n", mmr.position.row, mmr.position.col);
+  snprintf(buff, sizeof(buff),"[AI turn]: Row = %d & Column = %d\n", mmr.position.row, mmr.position.col);
   Serial.print(buff);
   
   updateBoard(mmr.position.row, mmr.position.col, AI_TOKEN);
@@ -150,7 +160,7 @@ void countTokens(char *window, char token, AccountTokens *at) {
 
 int evaluateWindow(char *window, char token) {
   int score = 0;
-  AccountTokens accountTokens = {.token = 0, .oddToken = 0, .empty = 0};
+  AccountTokens accountTokens = {.token=0, .oddToken=0, .empty=0};
   
   countTokens(window, token, &accountTokens);
   
@@ -215,24 +225,25 @@ int scorePosition(char token) {
 
 boolean isTerminalNode(void) {
   bool boardFull = false;
-  for (int col = 0; col < COLS; col++) {
+  for (byte col = 0; col < COLS; col++) {
     // If not empty spot found, board is not empty 
     if (board[0][col] == ' ') break;  
     
     // If all columns checked and still here, board is full
-    if (col == 6) boardFull = true; 
+    if (col == COLS - 1) boardFull = true; 
   }
   
   return boardFull || isWin(USER_TOKEN) || isWin(AI_TOKEN);
 }
 
-MinimaxResult minimax(byte depth, bool maximizingPlayer) {
+MinimaxResult minimax(byte depth, int alpha, int beta, bool maximizingPlayer) {
   #ifdef DEBUG
   Serial.print("===== MINIMAX =====\n");
   #endif
   
   MinimaxResult minimaxResult;
-
+  minimaxResult.position = {NOT_VALID, NOT_VALID};
+  
   #ifdef DEBUG
   char buff[50]; 
   snprintf(buff, sizeof(buff),"----- Trying depth = %d -----\n", depth);
@@ -253,7 +264,6 @@ MinimaxResult minimax(byte depth, bool maximizingPlayer) {
       #endif
       
       minimaxResult.score = scorePosition(AI_TOKEN);
-      minimaxResult.position = {NOT_VALID, NOT_VALID};
 
       #ifdef DEBUG
       char buff[50]; 
@@ -264,57 +274,60 @@ MinimaxResult minimax(byte depth, bool maximizingPlayer) {
       return minimaxResult;
     } else {
       if (isWin(AI_TOKEN)) {
-        #ifdef DEBUG
-        Serial.print("AI WIN :) \n");  
+        #ifdef DEBUG 
+        Serial.print("AI WIN :) \n"); 
         #endif
         
         minimaxResult.score = INFINITY;
       } else if (isWin(USER_TOKEN)){
-        #ifdef DEBUG
-        Serial.print("USER WIN :( \n");  
+        #ifdef DEBUG 
+        Serial.print("USER WIN :( \n"); 
         #endif
         
         minimaxResult.score = -INFINITY;
       } else {
-        #ifdef DEBUG
-        Serial.print("DRAW :/ \n");  
+        #ifdef DEBUG 
+        Serial.print("DRAW :/ \n"); 
         #endif
         
         minimaxResult.score = 0;
       }
-      minimaxResult.position = {NOT_VALID, NOT_VALID};
       return minimaxResult;
     }
   // Maximizing Player case
   } else if (maximizingPlayer) {
-    #ifdef DEBUG
-    Serial.print("----- MAXIMIZING PLAYER ----- \n");
+    #ifdef DEBUG 
+    Serial.print("----- MAXIMIZING PLAYER ----- \n"); 
     #endif
     
     int newMinimaxScore;
     minimaxResult.score = -INFINITY; 
+    
     for (byte col = 0; col < COLS; col++) {
       byte row = validateColumn(col); 
       if (row == NOT_VALID) continue;
 
       board[row][col] = AI_TOKEN;
-      newMinimaxScore = (minimax(depth - 1, false)).score;
+      newMinimaxScore = (minimax(depth - 1, alpha, beta, false)).score;
       board[row][col] = ' ';
       
       if (newMinimaxScore > minimaxResult.score) {
-        #ifdef DEBUG
-        Serial.print("NEW HIGHSCORE FOUND!!\n");
+        #ifdef DEBUG 
+        Serial.print("NEW HIGHSCORE FOUND!!\n"); 
         #endif
         
         minimaxResult.score = newMinimaxScore;
         minimaxResult.position = {.row=row, .col=col};  
       }
+
+      alpha = alpha < newMinimaxScore ? newMinimaxScore : alpha;
+      if (alpha >= beta) break;
     }
     return minimaxResult;
   // Minimizing player case
   } else {
-    #ifdef DEBUG
-    Serial.print("----- MINIMIZING PLAYER ----- \n");
+    #ifdef DEBUG 
+    Serial.print("----- MINIMIZING PLAYER ----- \n"); 
     #endif
     
     int newMinimaxScore;
@@ -325,13 +338,16 @@ MinimaxResult minimax(byte depth, bool maximizingPlayer) {
       if (row == NOT_VALID) continue;
       
       board[row][col] = USER_TOKEN;
-      newMinimaxScore = (minimax(depth - 1, true)).score;
+      newMinimaxScore = (minimax(depth - 1, alpha, beta, true)).score;
       board[row][col] = ' ';
       
       if (newMinimaxScore < minimaxResult.score) {
         minimaxResult.score = newMinimaxScore;
         minimaxResult.position = {.row=row, .col=col};  
       }
+
+      beta = beta > newMinimaxScore ? newMinimaxScore : beta;
+      if (alpha >= beta) break;
     }
     return minimaxResult;
   }
