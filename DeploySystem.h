@@ -9,19 +9,17 @@
 #ifndef DEPLOYSYSTEM_HEADER
 #define DEPLOYSYSTEM_HEADER
 
-#include "MyStepper.h"
+#include "LimitSwitch.h"
 #include "MyServo.h"
+#include "MyStepper.h"
 
 // TODO: Redefine player tokens in order to not declaring in different files
 #define USER_TOKEN  'x'
 #define AI_TOKEN    'o'
 
-#include "LimitSwitch.h"
-#include "MyServo.h"
-#include "MyStepper.h"
 
 /*
- * @brief Deploy chosen token into chosen column.
+ * @brief Deploy chosen token into chosen column. 
  */
 void deployToken(char token, byte column) {
   setColumn(column);
