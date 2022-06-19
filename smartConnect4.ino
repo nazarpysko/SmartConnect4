@@ -1,13 +1,11 @@
 #include <Wire.h> 
-#include <LiquidCrystal_I2C.h>
-#include <Keypad.h>
+#include "DeploySystem.h"
+#include "MyDisplay.h"
+#include "MyKeypad.h"
 
+#define TEST_SERVO
 //#define DEBUG
-#define MINIMAX
-
-#define I2C_address 0x3F 
-#define PAD_COLS 4
-#define PAD_ROWS 4
+#define MINIMAX // Comment if you don't want to play with minimax algorithm
 
 #define ROWS 6
 #define COLS 7
@@ -26,21 +24,6 @@
 #define OPEN_TWO_IN_A_ROW_SCORE 2
 #define OPEN_ODD_THREE_IN_A_ROW_SCORE 80
 #define CENTER_SCORE 3
-
-LiquidCrystal_I2C lcd(I2C_address, 16, 2);
-
-char keys[PAD_ROWS][PAD_COLS] = {
-  {'1','2','3','A'},
-  {'4','5','6','B' },
-  {'7','8','9','C'},
-  {'*','0','#','D'}
-};
-
-// Digital pins to connect the Keypad
-byte colPins[PAD_ROWS] = {22, 24, 26, 28}; 
-byte rowPins[PAD_COLS] = {30, 32, 34, 36}; 
-
-Keypad keypad = Keypad(makeKeymap(keys), colPins, rowPins, PAD_ROWS, PAD_COLS);
 
 // The board is labeled from left to right & top to bottom. 
 char board[ROWS][COLS] = {
@@ -69,39 +52,39 @@ typedef struct {
   byte empty;
 } AccountTokens;
 
-void lcdPrint(String s1, String s2="") {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print(s1);
-  lcd.setCursor(0, 1);
-  lcd.print(s2);
-}
-
 void setup() {
+  // TERMINAL setup
   Serial.begin(9600);
-  lcd.begin();
 
-  lcd.backlight();
-  lcd.cursor();
-  lcd.blink();
+  // 2x16 LCD DISPLAY setup
+  setupDisplay();
 
-  int duration = 500;
+  // SERVO setup
+  setupServo();
+
+  // LIMIT SWITCH setup
+  setupLimitSwitch();
   
-  tone(8, 1400, duration);
-  delay(200);
-  tone(8, 800, duration);
-  delay(200);
-  tone(8, 1800, duration);
-  delay(200);
-  tone(8, 600, duration);
-  delay(200);
+  // STEP MOTOR setup
+  setupStepMotor();
+  
+  // TEST
+  char currentTurn = USER_TOKEN;
+  referenceSelector();
+  
+  for (int col = 0; col < 7; col++) {
+    deployToken(currentTurn, col);
+    currentTurn = currentTurn == USER_TOKEN ? AI_TOKEN : USER_TOKEN;
+  }
 }
 
 void loop() {
+  #ifndef TEST_SERVO
   userTurn();
   checkEndOfGame(USER_TOKEN);
   AITurn();
   checkEndOfGame(AI_TOKEN);
+  #endif
 }
 
 void checkEndOfGame(char token) {
@@ -399,7 +382,7 @@ void userTurn() {
   byte column = 0;
   byte row = NOT_VALID;
   while (true) {
-    column = keypad.waitForKey() - '0'; 
+    column = getColumnFromKeypad();
     
     // OffByOne. From user's perspective columns are numerated from 1 to 7. 
     column--; 
@@ -425,7 +408,7 @@ void printBoard() {
   
   Serial.print(' ');
   for (byte col = 0; col < COLS; col++) {
-    Serial.print(col);
+    Serial.print(col+1);
     Serial.print(' ');
   }
 
