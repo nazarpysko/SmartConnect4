@@ -28,6 +28,10 @@ char board[ROWS][COLS] = {
 };
 
 
+void restartBoard() {
+  memset(board, ' ', sizeof(board));
+}
+
 /*
  * @brief Print the board on Serial
  */

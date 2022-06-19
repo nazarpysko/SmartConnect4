@@ -7,6 +7,7 @@
 #ifndef MYDISPLAY_HEADER
 #define MYDISPLAY_HEADER
 
+#include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
 #define DISPLAY_WIDTH   16
@@ -15,7 +16,6 @@
 #define I2C_address 0x3F // May need to be changed in your board. See README for more details.
 
 LiquidCrystal_I2C lcd(I2C_address, DISPLAY_WIDTH, DISPLAY_HEIGHT);
-
 
 /*
  * @brief Setup funtion. Used it in setup() in the main file. 

@@ -6,13 +6,11 @@
 #include "MyKeypad.h"
 
 #include "Board.h"
-
 #include "Minimax.h"
 
-//#define DEBUG
+#include "Melodies.h"
+
 #define MINIMAX // Comment if you don't want to play with minimax algorithm
-
-
 
 void setup() {
   // TERMINAL setup
@@ -35,9 +33,12 @@ void setup() {
 }
 
 void loop() {
-  switch()
   playGame();  
-  for(;;); // Dummy loop to end the game
+
+  lcdPrint("Press any button", "to restart...");
+  getColumnFromKeypad();
+  restartBoard();
+  printBoard();
 }
 
 
@@ -107,10 +108,18 @@ void playGame() {
   byte tokensDeployed = 0;
   while(tokensDeployed < 41){
     userTurn();
-    if (isWin(USER_TOKEN)) break;
-    AITurn();
-    if (isWin(AI_TOKEN)) break;
+    if (isWin(USER_TOKEN)) {
+      lcdPrint("GAME OVER", "You win! :)");
+      playNokia();
+      break;
+    }
     
+    AITurn();
+    if (isWin(AI_TOKEN)) {
+      lcdPrint("GAME OVER", "You lose! :(");
+      playMario();
+      break;
+    }
     tokensDeployed++;
   }
 }
