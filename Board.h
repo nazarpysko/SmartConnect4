@@ -17,6 +17,8 @@
 #define EMPTY 10
 #define NOT_VALID 8
 
+//#define LOGICAL_DEBUG
+
 char board[ROWS][COLS] = {
 //#COLS:  0    1    2    3    4    5    6    #ROWS
         {' ', ' ', ' ', ' ', ' ', ' ', ' '}, // 0
@@ -88,7 +90,9 @@ void updateBoard(byte row, byte column, char token) {
     snprintf(buff, sizeof(buff),"[%s turn]: Moving mechanism...\n", token == USER_TOKEN ? "User" : "AI");
     Serial.print(buff);
 
+    #ifndef LOGICAL_DEBUG
     deployToken(token, column);
+    #endif
 }
 
 
