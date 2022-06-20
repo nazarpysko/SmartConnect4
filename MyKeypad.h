@@ -28,7 +28,7 @@ Keypad keypad = Keypad(makeKeymap(keys), colPins, rowPins, PAD_ROWS, PAD_COLS);
 
 /*
  * @brief Get column from user interaction with the keypad in blocking mode. 
- * @return Column introduced
+ * @return Column introduced converted from char to byte
  */
 byte getColumnFromKeypad() {
   return keypad.waitForKey() - '0';

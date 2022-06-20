@@ -1,4 +1,4 @@
- #include "DeploySystem.h"
+#include "DeploySystem.h"
 #include "MyServo.h"
 #include "MyStepper.h"
 
@@ -11,7 +11,6 @@
 #include "Melodies.h"
 
 #define MINIMAX // Comment if you don't want to play with minimax algorithm
-#define INFINITY 32767 // Very high value for int
 
 void setup() {
   // TERMINAL setup
